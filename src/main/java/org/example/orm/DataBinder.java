@@ -5,35 +5,41 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import lombok.SneakyThrows;
 
 import java.io.File;
+import java.io.IOException;
 
 class DataBinder {
 
-    private final static String url = setUrl();
+    static {
+        File file = new File("src/main/resources/dbconnection.yaml");
+
+        ObjectMapper om = new ObjectMapper(new YAMLFactory());
+
+        DbConnectionProperties dbConnectionProperties = null;
+        try {
+            dbConnectionProperties = om.readValue(file, DbConnectionProperties.class);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
+        url = dbConnectionProperties.getUrl();
+        user = dbConnectionProperties.getUser();
+        password = dbConnectionProperties.getPassword();
+    }
+
+    private final static String url;
+    private final static String user;
+    private final static String password;
 
     static String getUrl() {
         return url;
     }
 
     static String getUser() {
-        return "postgres";
+        return user;
     }
 
     static String getPassword() {
-        return "changeme";
-    }
-
-    @SneakyThrows
-    private static String setUrl() {
-
-        ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
-
-        File file = new File(classLoader.getResource("dbconnection.yaml").getFile());
-
-        ObjectMapper om = new ObjectMapper(new YAMLFactory());
-
-        DbConnectionProperties test = om.readValue(file, DbConnectionProperties.class);
-
-        return "jdbc:postgresql://localhost:15432/jcourse";
+        return password;
     }
 
 }

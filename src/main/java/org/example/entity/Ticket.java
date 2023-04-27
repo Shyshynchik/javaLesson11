@@ -14,7 +14,6 @@ import javax.persistence.Table;
 @NoArgsConstructor
 @AllArgsConstructor
 @ToString
-@Table(name = "tickets")
 public class Ticket {
 
     @Id

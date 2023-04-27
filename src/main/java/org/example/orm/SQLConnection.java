@@ -6,11 +6,11 @@ import java.sql.SQLException;
 
 class SQLConnection {
 
-    private static String url = DataBinder.getUrl();
-    private static String user = DataBinder.getUser();
-    private static String password = DataBinder.getPassword();
+    private final static String url = DataBinder.getUrl();
+    private final static String user = DataBinder.getUser();
+    private final static String password = DataBinder.getPassword();
 
-    public static Connection createConnection() throws SQLException {
+    static Connection createConnection() throws SQLException {
         return DriverManager.getConnection(url, user, password);
     }
 

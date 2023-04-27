@@ -1,1 +1,3 @@
-url=jdbc:postgresql://localhost:15432/jcourse
+url: jdbc:postgresql://localhost:15432/jcourse
+user: postgres
+password: changeme

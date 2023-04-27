@@ -21,7 +21,8 @@ public class Aircraft {
     @Column(name = "aircraft_code")
     private String code;
 
-    @Column(name = "model")
+    @Column
+    @Type(type = "json")
     private String model;
 
     @Column(name = "range")
