@@ -3,10 +3,8 @@ package org.example.entity;
 import lombok.*;
 import org.hibernate.annotations.Type;
 
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.Id;
-import javax.persistence.Table;
+import javax.persistence.*;
+import java.util.List;
 
 @Entity
 @Getter
@@ -28,5 +26,7 @@ public class Aircraft {
     @Column(name = "range")
     private Integer range;
 
+    @OneToMany(targetEntity = Seat.class, mappedBy = "aircraft_code")
+    private List<Seat> seats;
 
 }

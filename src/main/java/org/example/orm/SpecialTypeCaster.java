@@ -3,7 +3,18 @@ package org.example.orm;
 
 import lombok.SneakyThrows;
 
+import java.sql.Date;
 import java.sql.PreparedStatement;
+import java.sql.Time;
+import java.sql.Timestamp;
+import java.text.DateFormat;
+import java.text.Format;
+import java.text.SimpleDateFormat;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.util.Formatter;
 
 public enum SpecialTypeCaster {
 
@@ -14,9 +25,13 @@ public enum SpecialTypeCaster {
         }
     },
     DEFAULT("") {
+    },
+    INTEGER("Integer") {
         @Override
-        String castType() {
-            return "?";
+        @SneakyThrows
+        int setStatement(PreparedStatement statement, String value, int i) {
+            statement.setInt(i++, Integer.parseInt(value));
+            return i;
         }
     },
     POINT("point") {
@@ -31,6 +46,17 @@ public enum SpecialTypeCaster {
             String[] point = value.split(",");
             statement.setString(i++, point[0]);
             statement.setString(i++, point[1]);
+
+            return i;
+        }
+    },
+    DATETIME("datetime") {
+        @Override
+        @SneakyThrows
+        int setStatement(PreparedStatement statement, String value, int i) {
+            DateTimeFormatter formatter = DateTimeFormatter.ISO_DATE_TIME;
+            LocalDateTime dateTime = LocalDateTime.parse(value, formatter);
+            statement.setTimestamp(i++, new Timestamp(dateTime.toInstant(ZoneOffset.UTC).toEpochMilli()));
 
             return i;
         }
@@ -53,7 +79,7 @@ public enum SpecialTypeCaster {
     }
 
     String castType() {
-        return "";
+        return "?";
     }
 
     @SneakyThrows

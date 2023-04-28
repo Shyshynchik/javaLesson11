@@ -2,6 +2,7 @@ package org.example.orm;
 
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import lombok.SneakyThrows;
 import org.hibernate.annotations.Type;
 
@@ -10,8 +11,12 @@ import java.lang.reflect.Field;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 public final class DefaultRepository<T> implements Repository<T> {
@@ -32,7 +37,8 @@ public final class DefaultRepository<T> implements Repository<T> {
 
         try(var connection = SQLConnection.createConnection()) {
             PreparedStatement statement = connection.prepareStatement("select * from " + tableName + " where " + name + " = ?");
-            statement.setString(1, primaryKey.toString());
+            var typeCaster = SpecialTypeCaster.findCasterByType(primaryKey.getClass().getSimpleName());
+            typeCaster.setStatement(statement, primaryKey.toString(), 1);
             statement.setFetchSize(1);
 
             ResultSet resultSet = statement.executeQuery();
@@ -76,24 +82,113 @@ public final class DefaultRepository<T> implements Repository<T> {
         T newEntity = clazz.getConstructor().newInstance();
 
         for (Field field: newEntity.getClass().getDeclaredFields()) {
-            String resultSetFieldValue = resultSet.getString(getColumnName(field));
             var entityField = newEntity.getClass().getDeclaredField(field.getName());
             entityField.setAccessible(true);
 
-            if (!entityField.getType().equals(String.class)) {
-                entityField.set(newEntity, (new ObjectMapper()).readValue(resultSetFieldValue, entityField.getType()));
-                continue;
-            }
+            var parseEntity = ParseEntity.findCasterByType(field);
 
-            entityField.set(newEntity, resultSetFieldValue);
+            Object resultSetFieldValue = parseEntity.getValue(resultSet, getColumnName(field));
+            entityField.set(newEntity, parseEntity.parseEntity(resultSetFieldValue, entityField));
         }
 
         return newEntity;
     }
 
+    private enum ParseEntity {
+        DEFAULT{
+
+        },
+        SIMPLE_TYPE {
+            @Override
+            @SneakyThrows
+            Object parseEntity(Object value, Field field) {
+                return (new ObjectMapper()).readValue(value.toString(), field.getType());
+            }
+        },
+        DATETIME {
+            @Override
+            Object parseEntity(Object value, Field field) {
+                Timestamp timestamp = (Timestamp) value;
+
+                return timestamp.toLocalDateTime();
+            }
+
+            @Override
+            @SneakyThrows
+            Object getValue(ResultSet resultSet, String columnName) {
+                return resultSet.getTimestamp(columnName);
+            }
+        },
+        LIST_REFERENCE{
+
+            @SneakyThrows
+            Object getValue(ResultSet resultSet, String columnName) {
+                return resultSet.getObject(columnName);
+            }
+
+            @Override
+            @SuppressWarnings("rawtypes, unchecked")
+            Object parseEntity(Object value, Field field) {
+                var clazz = field.getAnnotation(OneToMany.class).targetEntity();
+                var columnName = field.getAnnotation(OneToMany.class).mappedBy();
+                Repository repository = new DefaultRepository(clazz);
+
+                return repository.findByColumn(columnName, value);
+            }
+
+        },
+        SIMPLE_REFERENCE{
+
+            @SneakyThrows
+            Object getValue(ResultSet resultSet, String columnName) {
+                return resultSet.getObject(columnName);
+            }
+
+            @Override
+            @SuppressWarnings("rawtypes, unchecked")
+            Object parseEntity(Object value, Field field) {
+                Repository repository = new DefaultRepository(field.getType());
+
+                return repository.findByPrimaryKey(value);
+            }
+        };
+
+        static ParseEntity findCasterByType(Field field) {
+            if (field.getType().equals(LocalDateTime.class)) {
+                return DATETIME;
+            }
+            if (field.isAnnotationPresent(OneToOne.class) || field.isAnnotationPresent(ManyToOne.class)) {
+                return SIMPLE_REFERENCE;
+            }
+            if (field.isAnnotationPresent(OneToMany.class)) {
+                return LIST_REFERENCE;
+            }
+            if (!field.getType().equals(String.class)) {
+                return SIMPLE_TYPE;
+            }
+
+            return DEFAULT;
+        }
+
+        Object parseEntity(Object value, Field field) {
+            return value;
+        }
+
+        @SneakyThrows
+        Object getValue(ResultSet resultSet, String columnName) {
+            return resultSet.getString(columnName);
+        }
+    }
+
     private String getColumnName(Field field) {
-        if (!field.getAnnotation(Column.class).name().isBlank()) {
+        if (field.isAnnotationPresent(Column.class) && !field.getAnnotation(Column.class).name().isBlank()) {
             return field.getAnnotation(Column.class).name();
+        }
+        if (field.isAnnotationPresent(JoinColumn.class) && !field.getAnnotation(JoinColumn.class).name().isBlank()) {
+            return field.getAnnotation(JoinColumn.class).name();
+        }
+        if (field.isAnnotationPresent(OneToMany.class)) {
+            return field.getAnnotation(OneToMany.class).mappedBy();
         }
 
         return getColumnNameByFieldName(field);
@@ -154,6 +249,29 @@ public final class DefaultRepository<T> implements Repository<T> {
         var question = String.join(", ", valuesQuestion);
 
         return "insert into " + getTableName() + "(" + insert + ")" + " values(" + question + ")";
+    }
+
+    @Override
+    public List<T> findByColumn(String column, Object value) {
+        var tableName = getTableName();
+        List<T> resultList = new ArrayList<>();
+
+        try(var connection = SQLConnection.createConnection()) {
+            PreparedStatement statement = connection.prepareStatement("select * from " + tableName + " where " + column + " = ?");
+            var typeCaster = SpecialTypeCaster.findCasterByType(value.getClass().getSimpleName());
+            typeCaster.setStatement(statement, value.toString(), 1);
+            statement.setFetchSize(1);
+
+            ResultSet resultSet = statement.executeQuery();
+
+            while (resultSet.next()) {
+                resultList.add(createObject(resultSet));
+            }
+
+            return resultList;
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
     }
 
 }

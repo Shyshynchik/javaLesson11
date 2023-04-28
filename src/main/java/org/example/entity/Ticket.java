@@ -3,10 +3,7 @@ package org.example.entity;
 
 import lombok.*;
 
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.Id;
-import javax.persistence.Table;
+import javax.persistence.*;
 
 @Entity
 @Getter
@@ -20,8 +17,10 @@ public class Ticket {
     @Column(name = "ticket_no")
     private String number;
 
+    @OneToOne
     @Column(name = "book_ref")
-    private String book;
+    @JoinColumn(name = "book_ref")
+    private Booking book;
 
     @Column(name = "passenger_id")
     private String passenger;
