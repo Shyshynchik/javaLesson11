@@ -14,7 +14,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-public final class DefaultRepository<T, V> implements Repository<T, V> {
+public final class DefaultRepository<T> implements Repository<T> {
 
     private final Class<T> clazz;
 
@@ -26,7 +26,7 @@ public final class DefaultRepository<T, V> implements Repository<T, V> {
     }
 
     @Override
-    public T findByPrimaryKey(V primaryKey) {
+    public T findByPrimaryKey(Object primaryKey) {
         var name = getPrimaryKeyNameFromClass();
         var tableName = getTableName();
 
@@ -105,51 +105,55 @@ public final class DefaultRepository<T, V> implements Repository<T, V> {
     }
 
     @Override
+    @SneakyThrows
     public boolean save(T entity) {
-        createInsertSqlQueryString(entity);
-        return false;
+        String sql = createInsertSqlQueryString(entity);
+
+        try (var connection = SQLConnection.createConnection()) {
+            PreparedStatement statement = connection.prepareStatement(sql);
+
+            int i = 1;
+            for (Field field: entity.getClass().getDeclaredFields()) {
+                field.setAccessible(true);
+                if (field.isAnnotationPresent(Column.class)) {
+                    var value = field.get(entity).toString();
+
+                    var type = field.isAnnotationPresent(Type.class)
+                            ? field.getAnnotation(Type.class).type()
+                            : "";
+
+                    var typeCaster = SpecialTypeCaster.findCasterByType(type);
+
+                    i = typeCaster.setStatement(statement, value, i);
+                }
+            }
+
+            return statement.executeUpdate() > 0;
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @SneakyThrows
     private String createInsertSqlQueryString(T entity) {
         List<String> insertPart = new ArrayList<>();
         List<String> valuesQuestion = new ArrayList<>();
-        List<Object> valuesPart = new ArrayList<>();
 
         for (Field field : entity.getClass().getDeclaredFields()) {
             field.setAccessible(true);
-            var value = field.get(entity);
             var name = getColumnName(field);
 
             insertPart.add(name);
-            valuesPart.add(value);
-            var type = "?";
-            if (field.getType() != String.class) {
-                type = "?::" + field.getType().getSimpleName().toLowerCase();
-            }
-            if (field.isAnnotationPresent(Type.class)) {
-                type = "to_" + field.getAnnotation(Type.class).type() + "(?::" + field.getAnnotation(Type.class).type() + ")";
-            }
+
+            var type = TypeCaster.castType(field);
+
             valuesQuestion.add(type);
         }
 
         var insert = String.join(", ", insertPart);
         var question = String.join(", ", valuesQuestion);
 
-        var sql = "insert into " + getTableName() + "(" + insert + ")" + " values(" + question + ")";
-
-        try (var connection = SQLConnection.createConnection()) {
-            PreparedStatement statement = connection.prepareStatement(sql);
-
-            for (int i = 0; i < valuesPart.size(); i++) {
-                statement.setString(i+1, valuesPart.get(i).toString());
-            }
-
-            int value = statement.executeUpdate();
-            return "";
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
+        return "insert into " + getTableName() + "(" + insert + ")" + " values(" + question + ")";
     }
 
 }

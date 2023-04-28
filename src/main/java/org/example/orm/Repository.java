@@ -1,8 +1,8 @@
 package org.example.orm;
 
-public interface Repository<T, V> {
+public interface Repository<T> {
 
-    T findByPrimaryKey(V primaryKey);
+    T findByPrimaryKey(Object primaryKey);
 
     boolean save(T entity);
 
